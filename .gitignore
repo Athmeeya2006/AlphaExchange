@@ -1,0 +1,39 @@
+# Environment variables — contains credentials, never commit
+.env
+.env.dev
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+
+# Build artifacts
+/tmp/builds/
+
+# Coverage
+coverage.out
+coverage.html
