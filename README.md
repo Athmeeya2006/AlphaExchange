@@ -120,7 +120,7 @@ React frontend (live rankings)
 
 ## Quick start
 
-Prerequisites: Docker 24 or newer, Docker Compose v2, Go 1.22 or newer, Node 20 or newer.
+Prerequisites: Docker 24 or newer, Docker Compose v2, Go 1.26 or newer, Node 20 or newer.
 
 Bring up the full stack (infrastructure, all services, and the frontend):
 
@@ -542,7 +542,7 @@ error boundary, a mobile-responsive table, and Vitest component tests.
 
 **Developer experience**: a `.dockerignore` per service for smaller builds, a
 `.golangci.yml` covering errcheck, govet, staticcheck, unused, ineffassign, and
-gosimple, every Go module pinned to go 1.22, and graceful shutdown on SIGTERM
+gosimple, every Go module pinned to go 1.26, and graceful shutdown on SIGTERM
 everywhere.
 
 ## Observability

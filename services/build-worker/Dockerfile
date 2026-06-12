@@ -5,7 +5,7 @@
 # docker run -v /var/run/docker.sock:/var/run/docker.sock build-worker
 # The image itself does NOT bundle Docker — the socket is mounted at runtime.
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 LABEL org.opencontainers.image.source="https://github.com/trade-eval/trade-eval-platform"
 LABEL org.opencontainers.image.description="Consumes build jobs from Kafka, compiles contestant images, and pushes results to MinIO"

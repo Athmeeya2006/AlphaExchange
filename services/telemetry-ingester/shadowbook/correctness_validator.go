@@ -32,15 +32,16 @@ func (v *CorrectnessValidator) ValidateBatch(events []model.TelemetryEvent) []mo
 
 	results := make([]model.ValidationResult, len(sorted))
 	for i, e := range sorted {
-		// Reset the shadow book when a new test starts for this contestant.
-		// This keeps the shadow book in sync with the C++ orderbook which is
-		// reset (via POST /reset) by the bot-fleet at the start of each test.
-		if prev := v.lastTestID[e.ContestantID]; prev != e.TestID {
-			v.books[e.ContestantID] = NewOrderBook()
-			v.lastTestID[e.ContestantID] = e.TestID
-		}
-
+		// Create the book on first sight of a contestant, and reset it when a
+		// new test starts. Resetting keeps the shadow book in sync with the C++
+		// order book, which the bot-fleet clears via POST /reset per test.
 		book := v.books[e.ContestantID]
+		prev, seen := v.lastTestID[e.ContestantID]
+		if book == nil || (seen && prev != e.TestID) {
+			book = NewOrderBook()
+			v.books[e.ContestantID] = book
+		}
+		v.lastTestID[e.ContestantID] = e.TestID
 		expected := book.ProcessOrder(Order{
 			ID:           e.OrderID,
 			ContestantID: e.ContestantID,

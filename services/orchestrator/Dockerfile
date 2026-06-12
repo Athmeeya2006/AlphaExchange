@@ -1,5 +1,5 @@
 # FILE: services/orchestrator/Dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 LABEL org.opencontainers.image.source="https://github.com/trade-eval/trade-eval-platform"
 LABEL org.opencontainers.image.description="Manages test lifecycle, coordinates build and bot-fleet services via Kafka"

@@ -2,7 +2,7 @@
 # (rootless, suitable for Kubernetes). The build-worker shells out to executor.
 FROM gcr.io/kaniko-project/executor:latest AS kaniko
 
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 RUN apk add --no-cache ca-certificates
 COPY --from=kaniko /kaniko /kaniko
 ENV PATH="/kaniko:${PATH}"

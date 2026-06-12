@@ -1,5 +1,5 @@
 # FILE: services/leaderboard-api/Dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 LABEL org.opencontainers.image.source="https://github.com/trade-eval/trade-eval-platform"
 LABEL org.opencontainers.image.description="Serves real-time leaderboard data via REST and WebSocket endpoints"

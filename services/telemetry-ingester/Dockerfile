@@ -1,5 +1,5 @@
 # FILE: services/telemetry-ingester/Dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 LABEL org.opencontainers.image.source="https://github.com/trade-eval/trade-eval-platform"
 LABEL org.opencontainers.image.description="Consumes bot telemetry from Kafka and writes validated metrics to TimescaleDB and Redis"

@@ -1,6 +1,6 @@
 module github.com/trade-eval/build-worker
 
-go 1.22
+go 1.26.0
 
 require (
 	github.com/docker/docker v25.0.6+incompatible
