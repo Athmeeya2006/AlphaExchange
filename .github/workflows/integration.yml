@@ -15,10 +15,26 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Clean any leftover stack
-        run: docker compose down -v --remove-orphans || true
+      - name: Free ports and clean leftovers
+        run: |
+          docker compose down -v --remove-orphans || true
+          # Remove ALL containers on the runner, not just this project's;
+          # anything else holding our host ports breaks the bind below.
+          docker ps -aq | xargs -r docker rm -f
+          docker network prune -f
+          # Kill any non-container process squatting on the ports we publish.
+          for p in 3000 5433 5434 6379 8080 8082 8083 8084 8085 9000 9001 9092; do
+            sudo fuser -k ${p}/tcp 2>/dev/null || true
+          done
       - name: Start full stack
-        run: docker compose up -d --build --quiet-pull
+        run: |
+          docker compose up -d --build --quiet-pull || {
+            echo "first attempt failed, cleaning and retrying once"
+            docker compose down -v --remove-orphans || true
+            docker ps -aq | xargs -r docker rm -f
+            sleep 5
+            docker compose up -d --quiet-pull
+          }
       - name: Wait for health
         run: |
           for i in $(seq 1 24); do
