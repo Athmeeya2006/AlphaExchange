@@ -17,7 +17,7 @@ var templates = map[string]map[string]string{
 		"README.md": "# Python starter\n\nRun: `python main.py` (listens on :8080)\n",
 	},
 	"rust": {
-		"README.md": "# Rust starter\n\nImplement POST /order, POST /cancel, GET /health on :8080.\nSee docs/contestant-api.md.\n",
+		"README.md": "# Rust starter\n\nImplement POST /order, POST /cancel, GET /health on :8080.\nSee the order book API contract in the platform README.\n",
 	},
 }
 
@@ -93,7 +93,7 @@ ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
 
 const cppMain = `// Minimal correct order book starter. Build:
 //   g++ -O2 -std=c++17 -o orderbook main.cpp -lpthread
-// See docs/contestant-api.md for the full contract. This stub rests every limit
+// See the order book API contract in the platform README. This stub rests every limit
 // order and rejects market orders; replace with your matching engine.
 #include <arpa/inet.h>
 #include <netinet/in.h>

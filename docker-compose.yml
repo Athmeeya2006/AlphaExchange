@@ -1,10 +1,10 @@
-# trade-eval-platform docker-compose — local development stack
+# trade-eval-platform docker-compose - local development stack
 # Start infrastructure: docker compose up -d kafka redis minio timescaledb postgres
 # Init one-shots:       docker compose up kafka-init minio-init
 
 services:
 
-  # ── Kafka (KRaft mode — no Zookeeper) ──────────────────────────────────────
+  # ── Kafka (KRaft mode - no Zookeeper) ──────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: trade-eval-kafka

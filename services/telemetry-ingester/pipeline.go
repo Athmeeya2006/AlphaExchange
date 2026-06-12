@@ -12,7 +12,7 @@ import (
 	"github.com/trade-eval/telemetry-ingester/storage"
 )
 
-// Pipeline wires reorder → validate → aggregate → persist.
+// Pipeline wires reorder -> validate -> aggregate -> persist.
 type Pipeline struct {
 	validator *shadowbook.CorrectnessValidator
 	registry  *metrics.Registry

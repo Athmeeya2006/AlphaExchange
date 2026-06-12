@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wait-for-it.sh — block until a TCP host:port is reachable, then exec a command.
+# wait-for-it.sh - block until a TCP host:port is reachable, then exec a command.
 # Usage: wait-for-it.sh host:port [host:port ...] [-t timeout] [-- command args]
 set -euo pipefail
 

@@ -39,7 +39,7 @@ func (d *Detector) Inspect(s metrics.Snapshot) []Report {
 	}
 	if s.CorrectnessRate >= 1.0 && s.P99LatencyUs < 10 && s.TotalOrders > 100 {
 		reports = append(reports, Report{s.ContestantID, "PERFECT_CORRECTNESS_WITH_HIGH_SPEED", "INFO",
-			"perfect correctness with sub-10µs p99 — review for precomputed responses", now})
+			"perfect correctness with sub-10µs p99 - review for precomputed responses", now})
 	}
 	return reports
 }

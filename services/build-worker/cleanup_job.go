@@ -44,7 +44,7 @@ func (m *ContainerManager) cleanupOrphans(ctx context.Context) {
 
 	// Also load container IDs tracked in the DB (status='ready') so we never
 	// kill a container that a previous build-worker instance launched and that
-	// the DB still considers active — this prevents accidental teardown on restart.
+	// the DB still considers active - this prevents accidental teardown on restart.
 	dbTracked := make(map[string]bool)
 	if m.pool != nil {
 		rows, qErr := m.pool.Query(ctx,
@@ -63,7 +63,7 @@ func (m *ContainerManager) cleanupOrphans(ctx context.Context) {
 	cleaned := 0
 	for _, c := range list {
 		if tracked[c.ID] || dbTracked[c.ID] {
-			continue // in-memory or DB says it is legitimate — leave it alone
+			continue // in-memory or DB says it is legitimate - leave it alone
 		}
 		timeout := 10
 		_ = m.cli.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout})

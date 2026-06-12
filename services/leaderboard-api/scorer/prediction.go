@@ -56,7 +56,7 @@ func (p *Predictor) Predict(contestantID string) Prediction {
 		return pred
 	}
 
-	// Least-squares slope over index→score.
+	// Least-squares slope over index->score.
 	var sx, sy, sxy, sxx float64
 	for i, y := range h {
 		x := float64(i)

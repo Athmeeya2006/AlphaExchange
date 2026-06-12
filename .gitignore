@@ -1,8 +1,9 @@
-# Environment variables — contains credentials, never commit
+# Environment files (contain credentials, never commit)
 .env
-.env.dev
+.env.*
+!.env.example
 
-# Go
+# Go build artifacts
 *.exe
 *.exe~
 *.dll
@@ -10,30 +11,54 @@
 *.dylib
 *.test
 *.out
+*.prof
 vendor/
+bin/
 
-# Node / Frontend
+# Go test and coverage output
+coverage.out
+coverage.html
+coverage.txt
+
+# Node and frontend
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
 
-# IDE
+# Editors and IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# Operating system
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+desktop.ini
 
-# Docker
+# Docker and image exports
 *.tar
 
-# Build artifacts
+# Local build scratch space
 /tmp/builds/
+contestant-starter/
 
-# Coverage
-coverage.out
-coverage.html
+# Terraform state and local config
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!example.tfvars
+
+# Logs
+*.log
+logs/

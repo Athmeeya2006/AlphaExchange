@@ -1,4 +1,4 @@
-name: "CI — Build, Lint, Test"
+name: CI
 
 on:
   push:
@@ -6,8 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint-and-vet:
+  vet:
+    name: Go vet
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -18,13 +23,15 @@ jobs:
         run: |
           for d in services/*/; do
             [ -f "$d/go.mod" ] || continue
-            echo "== vet $d =="
+            echo "vet $d"
             (cd "$d" && go vet ./...)
           done
 
-  test-services:
+  test-go:
+    name: Go tests
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         service:
           - submission-api
@@ -39,22 +46,32 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
       - name: test
         run: cd services/${{ matrix.service }} && go test ./...
 
   test-frontend:
+    name: Frontend
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd frontend && npm ci || npm install
-      - run: cd frontend && npm run type-check
-      - run: cd frontend && npm run build
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: install
+        run: cd frontend && npm ci
+      - name: type-check
+        run: cd frontend && npm run type-check
+      - name: test
+        run: cd frontend && npm test -- --run
+      - name: build
+        run: cd frontend && npm run build
 
   build-images:
-    needs: [lint-and-vet, test-services, test-frontend]
+    name: Build and push images
+    needs: [vet, test-go, test-frontend]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     permissions:
@@ -68,12 +85,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & push
+      - name: Build and push
         run: |
-          SHA=$(git rev-parse --short HEAD)
+          sha=$(git rev-parse --short HEAD)
+          owner=${{ github.repository_owner }}
           for svc in submission-api build-worker orchestrator bot-fleet telemetry-ingester leaderboard-api; do
-            docker build -t ghcr.io/${{ github.repository_owner }}/$svc:$SHA services/$svc
-            docker push ghcr.io/${{ github.repository_owner }}/$svc:$SHA
+            docker build -t ghcr.io/$owner/$svc:$sha services/$svc
+            docker push ghcr.io/$owner/$svc:$sha
           done
-          docker build -t ghcr.io/${{ github.repository_owner }}/frontend:$SHA frontend
-          docker push ghcr.io/${{ github.repository_owner }}/frontend:$SHA
+          docker build -t ghcr.io/$owner/frontend:$sha frontend
+          docker push ghcr.io/$owner/frontend:$sha

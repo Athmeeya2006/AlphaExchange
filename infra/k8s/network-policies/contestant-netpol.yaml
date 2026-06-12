@@ -16,4 +16,4 @@ spec:
               app: bot-fleet
       ports:
         - { protocol: TCP, port: 8080 }
-  egress: []  # deny ALL egress — contestant code cannot call out
+  egress: []  # deny ALL egress - contestant code cannot call out

@@ -52,7 +52,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		var job BuildJob
 		if err := json.Unmarshal(msg.Value, &job); err != nil {
 			c.logger.Error("bad build job", "error", err)
-			_ = c.reader.CommitMessages(ctx, msg) // poison message — skip it
+			_ = c.reader.CommitMessages(ctx, msg) // poison message - skip it
 			continue
 		}
 

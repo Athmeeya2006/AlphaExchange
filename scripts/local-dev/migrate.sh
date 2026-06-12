@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# migrate.sh — apply SQL migrations to both databases in lexical order.
+# migrate.sh - apply SQL migrations to both databases in lexical order.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -11,7 +11,7 @@ apply() {
   local dsn="$1" dir="$2"
   [[ -d "$dir" ]] || { echo "no migrations dir: $dir"; return 0; }
   for f in $(ls "$dir"/*.sql | sort); do
-    echo "→ applying $(basename "$f") to ${dsn%%\?*}"
+    echo "==> applying $(basename "$f") to ${dsn%%\?*}"
     psql "$dsn" -v ON_ERROR_STOP=1 -f "$f"
   done
 }

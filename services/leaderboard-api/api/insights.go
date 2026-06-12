@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// GetInsights serves GET /v1/contestants/{id}/insights — current standing,
+// GetInsights serves GET /v1/contestants/{id}/insights - current standing,
 // weakest dimension vs peers, and auto-generated improvement tips.
 func (h *Handlers) GetInsights(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/contestants/"), "/insights")
@@ -46,19 +46,19 @@ func (h *Handlers) GetInsights(w http.ResponseWriter, r *http.Request) {
 	tips := []string{}
 	weakness := "balanced"
 	if me.Correctness < 0.99 {
-		tips = append(tips, "Correctness below 99% — check partial-fill and price-time-priority handling.")
+		tips = append(tips, "Correctness below 99% - check partial-fill and price-time-priority handling.")
 		weakness = "correctness"
 	}
 	if tpsRankBetter > n/2 {
-		tips = append(tips, "Throughput is below the median — consider lock-free data structures.")
+		tips = append(tips, "Throughput is below the median - consider lock-free data structures.")
 		weakness = "throughput"
 	}
 	if latRankBetter > n/2 {
-		tips = append(tips, "Latency is below the median — reduce per-order allocations and lock contention.")
+		tips = append(tips, "Latency is below the median - reduce per-order allocations and lock contention.")
 		weakness = "latency"
 	}
 	if len(tips) == 0 {
-		tips = append(tips, "Strong all-round — shave p99 tails to climb further.")
+		tips = append(tips, "Strong all-round - shave p99 tails to climb further.")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

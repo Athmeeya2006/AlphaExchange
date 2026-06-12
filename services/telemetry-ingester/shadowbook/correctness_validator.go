@@ -10,7 +10,7 @@ import (
 // sequence order and compares expected vs actual fills.
 type CorrectnessValidator struct {
 	books      map[string]*OrderBook // per contestant
-	lastTestID map[string]string     // contestant → last seen test_id
+	lastTestID map[string]string     // contestant -> last seen test_id
 }
 
 // NewCorrectnessValidator constructs the validator.
@@ -61,7 +61,7 @@ func compare(expected ExpectedFill, actual model.Fill) model.ValidationResult {
 	}
 
 	// Cancel requests can legitimately return CANCELLED, NOT_FOUND (order was
-	// already consumed by a concurrent fill), or ALREADY_FILLED — all valid.
+	// already consumed by a concurrent fill), or ALREADY_FILLED - all valid.
 	if expected.Status == StatusCancelled {
 		if actual.Status == StatusCancelled || actual.Status == "NOT_FOUND" || actual.Status == "ALREADY_FILLED" {
 			return model.ValidationResult{Correct: true}
@@ -70,7 +70,7 @@ func compare(expected ExpectedFill, actual model.Fill) model.ValidationResult {
 	}
 
 	// Shadow book says NOT_FOUND for a cancel that arrived after the order was
-	// consumed; the C++ server may have already removed it too — both valid.
+	// consumed; the C++ server may have already removed it too - both valid.
 	if expected.Status == "NOT_FOUND" {
 		if actual.Status == "NOT_FOUND" || actual.Status == StatusCancelled || actual.Status == "ALREADY_FILLED" {
 			return model.ValidationResult{Correct: true}
@@ -92,12 +92,12 @@ func compare(expected ExpectedFill, actual model.Fill) model.ValidationResult {
 		// Also tolerate PENDING-expected vs PARTIAL/FILLED-actual (order crossed
 		// due to concurrent arrivals re-ordering at the C++ server).
 		if expected.Status == StatusFilled && actual.Status == StatusPartial {
-			// OK — partial fill
+			// OK - partial fill
 		} else if expected.Status == StatusPending && (actual.Status == StatusFilled || actual.Status == StatusPartial) {
-			// OK — order crossed the book in the C++ server before we rested it
+			// OK - order crossed the book in the C++ server before we rested it
 			return model.ValidationResult{Correct: true}
 		} else if expected.Status == StatusFilled && actual.Status == StatusPending {
-			// OK — shadow book matched but C++ hadn't seen the resting order yet
+			// OK - shadow book matched but C++ hadn't seen the resting order yet
 			return model.ValidationResult{Correct: true}
 		} else {
 			return model.ValidationResult{Correct: false, Reason: "status mismatch: expected " + expected.Status + " got " + actual.Status}

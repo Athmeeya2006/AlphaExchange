@@ -6,10 +6,10 @@ API_KEY=${API_KEY:-key-alice-0001}
 
 echo "=== Trade Eval Platform Smoke Test ==="
 
-echo "→ Health check..."
+echo "==> Health check..."
 curl -sf "$BASE_URL/v1/health" | jq .
 
-echo "→ Uploading submission..."
+echo "==> Uploading submission..."
 FILE=${FILE:-testdata/sample-orderbook.zip}
 if [ ! -f "$FILE" ]; then
   echo "  (no $FILE; using sample-orderbook.cpp)"
@@ -22,7 +22,7 @@ RESULT=$(curl -sf -X POST "$BASE_URL/v1/submissions" \
 echo "$RESULT" | jq .
 SUB_ID=$(echo "$RESULT" | jq -r .submission_id)
 
-echo "→ Waiting for build (60s timeout)..."
+echo "==> Waiting for build (60s timeout)..."
 for _ in $(seq 1 30); do
   STATUS=$(curl -sf "$BASE_URL/v1/submissions/$SUB_ID" -H "X-API-Key: $API_KEY" | jq -r .status)
   echo "  Status: $STATUS"
@@ -31,7 +31,7 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-echo "→ Starting test..."
+echo "==> Starting test..."
 TEST_RESULT=$(curl -sf -X POST "$BASE_URL/v1/tests" \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
@@ -39,7 +39,7 @@ TEST_RESULT=$(curl -sf -X POST "$BASE_URL/v1/tests" \
 echo "$TEST_RESULT" | jq .
 TEST_ID=$(echo "$TEST_RESULT" | jq -r .test_id)
 
-echo "→ Waiting for test completion (90s timeout)..."
+echo "==> Waiting for test completion (90s timeout)..."
 for _ in $(seq 1 45); do
   STATUS=$(curl -sf "$BASE_URL/v1/tests/$TEST_ID" -H "X-API-Key: $API_KEY" | jq -r .test.status)
   echo "  Status: $STATUS"
@@ -48,7 +48,7 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 
-echo "→ Checking leaderboard..."
+echo "==> Checking leaderboard..."
 curl -sf "$BASE_URL/v1/leaderboard" | jq .
 
 echo "=== SMOKE TEST PASSED ==="

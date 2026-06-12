@@ -90,7 +90,7 @@ func (m *LagMonitor) check(ctx context.Context) {
 	case total > m.maxLag:
 		m.logger.Error("KAFKA LAG HIGH", "lag", total, "topic", m.topic)
 	case m.growing.Load() && prev > 0:
-		m.logger.Warn("kafka lag growing — consider more consumers", "lag", total)
+		m.logger.Warn("kafka lag growing - consider more consumers", "lag", total)
 	default:
 		m.logger.Debug("kafka lag", "lag", total)
 	}

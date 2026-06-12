@@ -35,15 +35,15 @@ type Worker struct {
 	monitor  *security.ResourceMonitor
 }
 
-// ProcessBuild executes download → build → sandbox → health → ready.
+// ProcessBuild executes download -> build -> sandbox -> health -> ready.
 func (wk *Worker) ProcessBuild(ctx context.Context, job BuildJob) {
 	log := wk.logger.With("submission_id", job.SubmissionID, "language", job.Language)
 	log.Info("processing build")
 
-	// STEP 1 — building.
+	// STEP 1 - building.
 	wk.setStatus(ctx, job.SubmissionID, "building", "")
 
-	// STEP 2 — temp dir.
+	// STEP 2 - temp dir.
 	dir := filepath.Join(wk.cfg.WorkDir, job.SubmissionID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		wk.fail(ctx, job, "could not create workdir: "+err.Error())
@@ -51,7 +51,7 @@ func (wk *Worker) ProcessBuild(ctx context.Context, job BuildJob) {
 	}
 	defer os.RemoveAll(dir)
 
-	// STEP 3 — download + unzip.
+	// STEP 3 - download + unzip.
 	srcDir := filepath.Join(dir, "src")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		wk.fail(ctx, job, err.Error())
@@ -62,17 +62,17 @@ func (wk *Worker) ProcessBuild(ctx context.Context, job BuildJob) {
 		return
 	}
 
-	// STEP 4 — build (600s budget — includes pulling base images on first run).
+	// STEP 4 - build (600s budget - includes pulling base images on first run).
 	buildCtx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	imageName, buildLogs, err := buildContainer(buildCtx, wk.docker, job.SubmissionID, job.Language, srcDir)
 	if err != nil {
-		// STEP 5 — build failure.
+		// STEP 5 - build failure.
 		wk.fail(ctx, job, truncate(buildLogs, 10*1024))
 		return
 	}
 
-	// STEP 5b — image vulnerability scan; CRITICAL findings block the run.
+	// STEP 5b - image vulnerability scan; CRITICAL findings block the run.
 	if wk.scanner != nil {
 		if res, _ := wk.scanner.Scan(buildCtx, imageName); res.HasCritical {
 			wk.fail(ctx, job, "security_scan_failed: CRITICAL vulnerabilities found\n"+truncate(res.Output, 4096))
@@ -80,21 +80,21 @@ func (wk *Worker) ProcessBuild(ctx context.Context, job BuildJob) {
 		}
 	}
 
-	// STEP 6 — launch sandbox.
+	// STEP 6 - launch sandbox.
 	containerID, ip, port, err := launchSandbox(ctx, wk.docker, wk.cfg, imageName, job.SubmissionID)
 	if err != nil {
 		wk.fail(ctx, job, "sandbox launch failed: "+err.Error())
 		return
 	}
 
-	// STEP 7 — health probe (30s, every 2s). Use host port for probing.
+	// STEP 7 - health probe (30s, every 2s). Use host port for probing.
 	if !wk.waitHealthy(ctx, ip, port, 30*time.Second) {
 		_ = wk.cm.StopContainer(ctx, job.SubmissionID)
 		wk.fail(ctx, job, "container did not become healthy")
 		return
 	}
 
-	// STEP 8 — ready.
+	// STEP 8 - ready.
 	wk.setContainerInfo(ctx, job.SubmissionID, ip, port, containerID)
 	wk.setStatus(ctx, job.SubmissionID, "ready", "")
 	if wk.redis != nil {
@@ -109,7 +109,7 @@ func (wk *Worker) ProcessBuild(ctx context.Context, job BuildJob) {
 		CreatedAt:    time.Now(),
 	})
 
-	// STEP 9 — publish CONTAINER_READY + start resource monitoring.
+	// STEP 9 - publish CONTAINER_READY + start resource monitoring.
 	wk.publishReady(ctx, job, ip, port)
 	if wk.monitor != nil {
 		softMem := uint64(float64(wk.cfg.SandboxMemoryMB) * 1024 * 1024 * 0.8)

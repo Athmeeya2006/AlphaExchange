@@ -83,7 +83,7 @@ export function ProgressPage() {
               <span className="text-gray-400">Projected final score:</span>
               <span className="text-gray-100 text-lg">{pred.predicted_score.toFixed(1)}</span>
               <Badge variant={pred.trend === 'up' ? 'success' : pred.trend === 'down' ? 'danger' : 'neutral'}>
-                {pred.trend === 'up' ? '▲ trending up' : pred.trend === 'down' ? '▼ trending down' : '→ flat'}
+                {pred.trend === 'up' ? '▲ trending up' : pred.trend === 'down' ? '▼ trending down' : 'flat'}
               </Badge>
               <span className="text-gray-600 text-xs">({(pred.confidence * 100).toFixed(0)}% conf)</span>
             </div>

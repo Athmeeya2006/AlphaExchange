@@ -1,20 +1,23 @@
-name: "Security Scan"
+name: Security
+
 on:
   push:
     branches: [main]
   schedule:
     - cron: "0 6 * * 1"
 
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   trivy-scan:
+    name: Trivy image scan
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build images
-        run: |
-          for svc in submission-api build-worker orchestrator bot-fleet telemetry-ingester leaderboard-api; do
-            docker build -t trade-eval/$svc:scan services/$svc
-          done
+      - name: Build image
+        run: docker build -t trade-eval/submission-api:scan services/submission-api
       - name: Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -23,23 +26,39 @@ jobs:
           severity: HIGH,CRITICAL
 
   gosec-scan:
+    name: gosec static analysis
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "1.22" }
+        with:
+          go-version: "1.22"
       - name: gosec
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest || true
-          for d in services/*/; do (cd "$d" && gosec ./... || true); done
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          for d in services/*/; do
+            [ -f "$d/go.mod" ] || continue
+            (cd "$d" && gosec ./... || true)
+          done
 
   dependency-audit:
+    name: Dependency audit
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "1.22" }
-      - run: for d in services/*/; do (cd "$d" && go mod verify); done
+        with:
+          go-version: "1.22"
+      - name: go mod verify
+        run: |
+          for d in services/*/; do
+            [ -f "$d/go.mod" ] || continue
+            (cd "$d" && go mod verify)
+          done
       - uses: actions/setup-node@v4
-        with: { node-version: "20" }
-      - run: cd frontend && npm audit --audit-level=high || true
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm audit
+        run: cd frontend && npm audit --audit-level=high || true

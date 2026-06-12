@@ -45,7 +45,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// STEP 1 — parse multipart form (cap memory; stream the file).
+	// STEP 1 - parse multipart form (cap memory; stream the file).
 	if err := r.ParseMultipartForm(h.d.MaxUploadBytes); err != nil {
 		apierrors.WriteError(w, &apierrors.ErrValidation{Field: "file", Message: "could not parse multipart form"})
 		return
@@ -77,11 +77,11 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// STEP 2 — generate ID.
+	// STEP 2 - generate ID.
 	subID := "sub_" + uuid.Must(uuid.NewV7()).String()
 	s3Key := "submissions/" + contestant.ID + "/" + subID + "/" + filepath.Base(header.Filename)
 
-	// STEP 3 — stream to MinIO.
+	// STEP 3 - stream to MinIO.
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -93,7 +93,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// STEP 4 — insert to Postgres.
+	// STEP 4 - insert to Postgres.
 	sub := &repository.Submission{
 		ID:             subID,
 		ContestantID:   contestant.ID,
@@ -108,7 +108,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// STEP 5 — publish build job (best effort).
+	// STEP 5 - publish build job (best effort).
 	job := buildJob{SubmissionID: subID, S3Key: s3Key, Language: language, ContestantID: contestant.ID}
 	if b, err := json.Marshal(job); err == nil && h.d.Producer != nil {
 		if err := h.d.Producer.Produce(r.Context(), h.d.BuildJobsTopic, []byte(subID), b); err != nil {
@@ -116,7 +116,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// STEP 6 — return 202.
+	// STEP 6 - return 202.
 	apierrors.WriteJSON(w, http.StatusAccepted, map[string]string{
 		"submission_id": subID,
 		"status":        "pending",
