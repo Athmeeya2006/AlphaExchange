@@ -18,7 +18,7 @@ jobs:
       - name: Clean any leftover stack
         run: docker compose down -v --remove-orphans || true
       - name: Start full stack
-        run: docker compose up -d --build
+        run: docker compose up -d --build --quiet-pull
       - name: Wait for health
         run: |
           for i in $(seq 1 24); do
