@@ -37,7 +37,7 @@ jobs:
           }
       - name: Wait for health
         run: |
-          for i in $(seq 1 24); do
+          for i in $(seq 1 36); do
             if curl -sf http://localhost:8080/v1/health; then
               echo "healthy"
               exit 0
@@ -45,7 +45,11 @@ jobs:
             sleep 5
           done
           echo "service did not become healthy in time"
-          docker compose logs --no-color | tail -100
+          docker compose ps -a
+          for svc in submission-api orchestrator telemetry-ingester leaderboard-api bot-fleet build-worker db-migrate; do
+            echo "===== logs: $svc ====="
+            docker compose logs --no-color "$svc" 2>&1 | tail -30
+          done
           exit 1
       - name: Run integration test
         run: bash scripts/integration-test.sh

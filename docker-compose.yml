@@ -1,6 +1,54 @@
 # trade-eval-platform docker-compose - local development stack
 # Start infrastructure: docker compose up -d kafka redis minio timescaledb postgres
 # Init one-shots:       docker compose up kafka-init minio-init
+#
+# Every service gets the shared dev environment below. Values can be overridden
+# through a .env file in this directory; without one the defaults work as-is,
+# so the stack runs from a fresh clone (and in CI) with no extra setup.
+
+x-dev-env: &dev-env
+  KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+  BUILD_JOBS_TOPIC: ${BUILD_JOBS_TOPIC:-build-jobs}
+  ORCHESTRATOR_EVENTS_TOPIC: ${ORCHESTRATOR_EVENTS_TOPIC:-orchestrator-events}
+  BOT_TELEMETRY_TOPIC: ${BOT_TELEMETRY_TOPIC:-bot-telemetry}
+  LEADERBOARD_UPDATES_TOPIC: ${LEADERBOARD_UPDATES_TOPIC:-leaderboard-updates}
+  SUBMISSIONS_TOPIC: ${SUBMISSIONS_TOPIC:-submissions}
+  REDIS_URL: ${REDIS_URL:-redis:6379}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+  MINIO_BUCKET: ${MINIO_BUCKET:-submissions}
+  MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+  TIMESCALE_DSN: ${TIMESCALE_DSN:-postgres://postgres:postgres@timescaledb:5432/tradeeval?sslmode=disable}
+  # In-network DSN; deliberately not read from .env, whose value targets the
+  # host-mapped port (5433) and is wrong inside a container.
+  ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+  SUBMISSION_API_PORT: ${SUBMISSION_API_PORT:-8080}
+  MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+  MAX_CONCURRENT_BUILDS: ${MAX_CONCURRENT_BUILDS:-3}
+  BUILD_TIMEOUT_SECONDS: ${BUILD_TIMEOUT_SECONDS:-120}
+  WORK_DIR: ${WORK_DIR:-/tmp/builds}
+  HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-10}
+  ORPHAN_DETECTION_SECONDS: ${ORPHAN_DETECTION_SECONDS:-60}
+  AUTO_TRIGGER_TESTS: ${AUTO_TRIGGER_TESTS:-false}
+  MAX_BOTS_PER_POD: ${MAX_BOTS_PER_POD:-200}
+  BOT_REQUEST_TIMEOUT_MS: ${BOT_REQUEST_TIMEOUT_MS:-5000}
+  TEST_DEFAULT_DURATION_SECONDS: ${TEST_DEFAULT_DURATION_SECONDS:-300}
+  TEST_DEFAULT_BOT_COUNT: ${TEST_DEFAULT_BOT_COUNT:-500}
+  WINDOW_SIZE_SECONDS: ${WINDOW_SIZE_SECONDS:-30}
+  TELEMETRY_BATCH_SIZE: ${TELEMETRY_BATCH_SIZE:-500}
+  FLUSH_INTERVAL_MS: ${FLUSH_INTERVAL_MS:-1000}
+  REORDER_BUFFER_MS: ${REORDER_BUFFER_MS:-100}
+  LEADERBOARD_API_PORT: ${LEADERBOARD_API_PORT:-8084}
+  LEADERBOARD_UPDATE_INTERVAL_MS: ${LEADERBOARD_UPDATE_INTERVAL_MS:-500}
+  MAX_WEBSOCKET_CONNECTIONS: ${MAX_WEBSOCKET_CONNECTIONS:-10000}
+  SANDBOX_MEMORY_LIMIT: ${SANDBOX_MEMORY_LIMIT:-512m}
+  SANDBOX_CPU_CORES: ${SANDBOX_CPU_CORES:-2,3}
+  CONTESTANT_NETWORK: ${CONTESTANT_NETWORK:-alphaexchange_trade-eval-net}
+  ADMIN_API_KEY: ${ADMIN_API_KEY:-admin-dev-key-change-in-production}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-internal-dev-token}
 
 services:
 
@@ -198,7 +246,7 @@ services:
       - path: .env
         required: false
     environment:
-      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      <<: *dev-env
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -222,7 +270,7 @@ services:
       - path: .env
         required: false
     environment:
-      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      <<: *dev-env
       SECCOMP_PROFILE: ""
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -245,7 +293,7 @@ services:
       - path: .env
         required: false
     environment:
-      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      <<: *dev-env
       HEALTH_PORT: "8082"
     depends_on:
       db-migrate:
@@ -267,6 +315,7 @@ services:
       - path: .env
         required: false
     environment:
+      <<: *dev-env
       METRICS_PORT: "8082"
     depends_on:
       kafka:
@@ -284,6 +333,7 @@ services:
       - path: .env
         required: false
     environment:
+      <<: *dev-env
       API_PORT: "8083"
     depends_on:
       db-migrate:
@@ -305,6 +355,7 @@ services:
       - path: .env
         required: false
     environment:
+      <<: *dev-env
       PORT: "8084"
     depends_on:
       redis:
