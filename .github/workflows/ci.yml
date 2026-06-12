@@ -88,7 +88,7 @@ jobs:
       - name: Build and push
         run: |
           sha=$(git rev-parse --short HEAD)
-          owner=${{ github.repository_owner }}
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           for svc in submission-api build-worker orchestrator bot-fleet telemetry-ingester leaderboard-api; do
             docker build -t ghcr.io/$owner/$svc:$sha services/$svc
             docker push ghcr.io/$owner/$svc:$sha
