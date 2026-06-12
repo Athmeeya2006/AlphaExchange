@@ -1,0 +1,79 @@
+name: "CI — Build, Lint, Test"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-vet:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: go vet
+        run: |
+          for d in services/*/; do
+            [ -f "$d/go.mod" ] || continue
+            echo "== vet $d =="
+            (cd "$d" && go vet ./...)
+          done
+
+  test-services:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        service:
+          - submission-api
+          - build-worker
+          - orchestrator
+          - bot-fleet
+          - telemetry-ingester
+          - leaderboard-api
+          - shadow-orderbook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: test
+        run: cd services/${{ matrix.service }} && go test ./...
+
+  test-frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd frontend && npm ci || npm install
+      - run: cd frontend && npm run type-check
+      - run: cd frontend && npm run build
+
+  build-images:
+    needs: [lint-and-vet, test-services, test-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          for svc in submission-api build-worker orchestrator bot-fleet telemetry-ingester leaderboard-api; do
+            docker build -t ghcr.io/${{ github.repository_owner }}/$svc:$SHA services/$svc
+            docker push ghcr.io/${{ github.repository_owner }}/$svc:$SHA
+          done
+          docker build -t ghcr.io/${{ github.repository_owner }}/frontend:$SHA frontend
+          docker push ghcr.io/${{ github.repository_owner }}/frontend:$SHA

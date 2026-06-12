@@ -1,120 +1,109 @@
-// FILE: services/orchestrator/main.go
+// Command orchestrator coordinates the test lifecycle state machine, including
+// crash recovery and final scoring.
 package main
 
 import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 )
-
-type Config struct {
-	KafkaBrokers             string
-	OrchestratorEventsTopic  string
-	ConsumerGroupID          string
-	DatabaseDSN              string
-	RedisURL                 string
-	InstanceID               string
-	HeartbeatIntervalSeconds int
-	OrphanDetectionSeconds   int
-	Environment              string
-	LogLevel                 string
-}
-
-func loadConfig() Config {
-	return Config{
-		KafkaBrokers:             getEnv("KAFKA_BROKERS", "localhost:9092"),
-		OrchestratorEventsTopic:  getEnv("ORCHESTRATOR_EVENTS_TOPIC", "orchestrator-events"),
-		ConsumerGroupID:          getEnv("CONSUMER_GROUP_ID", "orchestrators"),
-		DatabaseDSN:              getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5433/orchestrator?sslmode=disable"),
-		RedisURL:                 getEnv("REDIS_URL", "localhost:6379"),
-		InstanceID:               getEnv("INSTANCE_ID", ""),
-		HeartbeatIntervalSeconds: getEnvInt("HEARTBEAT_INTERVAL_SECONDS", 10),
-		OrphanDetectionSeconds:   getEnvInt("ORPHAN_DETECTION_SECONDS", 60),
-		Environment:              getEnv("ENVIRONMENT", "development"),
-		LogLevel:                 getEnv("LOG_LEVEL", "info"),
-	}
-}
-
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func getEnvInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return fallback
-}
-
-func parseLogLevel(s string) slog.Level {
-	switch s {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
-
-func initLogger(cfg Config) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}
-	var handler slog.Handler
-	if cfg.Environment == "production" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	}
-	return slog.New(handler).With("instance_id", cfg.InstanceID)
-}
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("service failed", "error", err)
+		slog.Error("orchestrator failed", "error", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	cfg := loadConfig()
-	if cfg.InstanceID == "" {
-		cfg.InstanceID = uuid.New().String()
-	}
+	instanceID := uuid.NewString()
+	cfg := loadConfig(instanceID)
 	logger := initLogger(cfg)
 	slog.SetDefault(logger)
+	logger.Info("orchestrator starting", "instance", instanceID)
 
-	logger.Info("orchestrator starting", "instance_id", cfg.InstanceID)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
-	stopCh := make(chan struct{})
+	pool, err := pgxpool.New(ctx, cfg.OrchestratorDBDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	defer rdb.Close()
+
+	producer := NewProducer(cfg.KafkaBrokers)
+	defer producer.Close()
+
+	repo := NewTestRepo(pool)
+	mw := NewMetricsWriter(rdb)
+	sm := NewStateMachine(cfg, repo, rdb, producer, mw, logger)
+	recovery := NewRecovery(cfg, repo, rdb, sm, logger)
+	consumer := NewConsumer(cfg, sm, logger)
+	defer consumer.Close()
+
+	go recovery.WriteHeartbeats(ctx)
+	go recovery.DetectOrphans(ctx)
 	go func() {
-		ticker := time.NewTicker(time.Duration(cfg.HeartbeatIntervalSeconds) * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				logger.Info("orchestrator heartbeat")
-			case <-stopCh:
-				return
-			}
+		if err := consumer.Run(ctx); err != nil {
+			logger.Error("consumer stopped", "error", err)
 		}
 	}()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	<-sigCh
+	srv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: healthHandler(sm, cfg.AdminAPIKey)}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("health server", "error", err)
+		}
+	}()
+	logger.Info("orchestrator ready", "health_port", cfg.HealthPort)
+
+	<-ctx.Done()
 	logger.Info("orchestrator shutting down")
-	close(stopCh)
-	return nil
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return srv.Shutdown(shutdownCtx)
+}
+
+func healthHandler(sm *TestStateMachine, adminKey string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+	})
+	mux.Handle("/metrics", promhttp.Handler())
+	// Admin endpoints require a constant-time admin-key match.
+	mux.HandleFunc("/admin/active-tests", requireAdmin(adminKey, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(sm.ActiveTests())
+	}))
+	return mux
+}
+
+// requireAdmin guards a handler with a constant-time X-Admin-Key check.
+func requireAdmin(adminKey string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Key")), []byte(adminKey)) != 1 {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }

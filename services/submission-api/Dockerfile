@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /app/subm
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=builder /app/submission-api /app/submission-api
+COPY --from=builder /build/migrations /app/migrations
 
 EXPOSE 8080
 

@@ -1,90 +1,27 @@
-// FILE: services/build-worker/main.go
+// Command build-worker consumes build jobs, compiles contestant code into
+// hardened Docker sandboxes, and reports readiness.
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/docker/docker/client"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/trade-eval/build-worker/security"
 )
-
-type Config struct {
-	KafkaBrokers        string
-	BuildJobsTopic      string
-	ConsumerGroupID     string
-	DatabaseDSN         string
-	MinIOEndpoint       string
-	MinIOAccessKey      string
-	MinIOSecretKey      string
-	MinioBucket         string
-	WorkDir             string
-	MaxConcurrentBuilds int
-	Environment         string
-	LogLevel            string
-}
-
-func loadConfig() Config {
-	return Config{
-		KafkaBrokers:        getEnv("KAFKA_BROKERS", "localhost:9092"),
-		BuildJobsTopic:      getEnv("BUILD_JOBS_TOPIC", "build-jobs"),
-		ConsumerGroupID:     getEnv("CONSUMER_GROUP_ID", "build-workers"),
-		DatabaseDSN:         getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5433/orchestrator?sslmode=disable"),
-		MinIOEndpoint:       getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinIOAccessKey:      getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinIOSecretKey:      getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioBucket:         getEnv("MINIO_BUCKET", "submissions"),
-		WorkDir:             getEnv("WORK_DIR", "/tmp/builds"),
-		MaxConcurrentBuilds: getEnvInt("MAX_CONCURRENT_BUILDS", 3),
-		Environment:         getEnv("ENVIRONMENT", "development"),
-		LogLevel:            getEnv("LOG_LEVEL", "info"),
-	}
-}
-
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func getEnvInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return fallback
-}
-
-func parseLogLevel(s string) slog.Level {
-	switch s {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
-
-func initLogger(cfg Config) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}
-	var handler slog.Handler
-	if cfg.Environment == "production" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	}
-	return slog.New(handler)
-}
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("service failed", "error", err)
+		slog.Error("build-worker failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -93,40 +30,79 @@ func run() error {
 	cfg := loadConfig()
 	logger := initLogger(cfg)
 	slog.SetDefault(logger)
+	logger.Info("build-worker starting", "max_concurrent", cfg.MaxConcurrentBuild)
 
-	if err := os.MkdirAll(cfg.WorkDir, 0755); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	pool, err := pgxpool.New(ctx, cfg.OrchestratorDBDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	defer rdb.Close()
+
+	mc, err := minio.New(cfg.MinIOEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.MinIOAccessKey, cfg.MinIOSecretKey, ""),
+		Secure: false,
+	})
+	if err != nil {
 		return err
 	}
 
-	logger.Info("build-worker starting",
-		"kafka_brokers", cfg.KafkaBrokers,
-		"topic", cfg.BuildJobsTopic,
-		"consumer_group", cfg.ConsumerGroupID,
-		"work_dir", cfg.WorkDir,
-		"max_concurrent_builds", cfg.MaxConcurrentBuilds,
-		"environment", cfg.Environment,
+	dockerCli, err := client.NewClientWithOpts(
+		client.WithHost(cfg.DockerHost),
+		client.WithAPIVersionNegotiation(),
 	)
+	if err != nil {
+		return err
+	}
+	defer dockerCli.Close()
 
-	stopCh := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				logger.Info("waiting for build jobs...")
-			case <-stopCh:
-				return
-			}
+	producer := NewProducer(cfg.KafkaBrokers)
+	defer producer.Close()
+
+	cm := NewContainerManager(dockerCli, pool, rdb, logger)
+	worker := &Worker{
+		cfg:      cfg,
+		logger:   logger,
+		docker:   dockerCli,
+		minio:    mc,
+		pool:     pool,
+		redis:    rdb,
+		producer: producer,
+		cm:       cm,
+		scanner:  security.NewImageScanner(logger),
+		monitor:  security.NewResourceMonitor(dockerCli, logger),
+	}
+
+	// Re-register containers from previous build-worker instances so the
+	// cleanup job doesn't immediately kill them as orphans.
+	cm.RecoverActive(ctx)
+
+	go cm.MonitorHealth(ctx)
+	go cm.RunCleanup(ctx)
+
+	consumer := NewConsumer(cfg, logger, worker)
+	defer consumer.Close()
+
+	logger.Info("build-worker consuming", "topic", cfg.BuildJobsTopic)
+	errCh := make(chan error, 1)
+	go func() { errCh <- consumer.Run(ctx) }()
+
+	select {
+	case <-ctx.Done():
+	case err := <-errCh:
+		if err != nil {
+			logger.Error("consumer error", "error", err)
 		}
-	}()
+	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-
-	<-sigCh
-	logger.Info("build-worker shutting down")
-	close(stopCh)
-
+	logger.Info("draining containers")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cm.StopAll(shutdownCtx)
 	return nil
 }

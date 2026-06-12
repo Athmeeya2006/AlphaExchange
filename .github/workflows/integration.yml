@@ -1,0 +1,24 @@
+name: "Integration Tests"
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start full stack
+        run: docker compose up -d --build
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:8080/v1/health && break
+            sleep 5
+          done
+      - name: Run integration test
+        run: bash scripts/integration-test.sh
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

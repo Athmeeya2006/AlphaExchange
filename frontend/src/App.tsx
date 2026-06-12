@@ -1,82 +1,32 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppLayout } from '@/components/Layout/AppLayout';
+import { LeaderboardPage } from '@/pages/Leaderboard/LeaderboardPage';
+import { SubmitPage } from '@/pages/Submit/SubmitPage';
+import { ResultsPage } from '@/pages/Results/ResultsPage';
+import { ProgressPage } from '@/pages/Progress/ProgressPage';
+import { LoginPage } from '@/pages/Auth/LoginPage';
+import { AdminPage } from '@/pages/Admin/AdminPage';
+import { isAuthenticated } from '@/lib/auth';
 
-const LeaderboardPage = () => (
-  <div className="p-8">
-    <h1 className="text-2xl font-bold mb-4 font-mono text-accent-green">Live Leaderboard</h1>
-    <div className="bg-surface-secondary p-6 rounded-lg border border-surface-tertiary">
-      <p className="text-gray-400 font-mono">No data yet...</p>
-    </div>
-  </div>
-);
+function Protected({ children }: { children: React.ReactNode }) {
+  return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />;
+}
 
-const SubmitPage = () => (
-  <div className="p-8">
-    <h1 className="text-2xl font-bold mb-4 font-mono text-accent-green">Submit Your Order Book</h1>
-    <div className="bg-surface-secondary p-6 rounded-lg border border-surface-tertiary">
-      <p className="text-gray-400 font-mono">Submission form coming soon...</p>
-    </div>
-  </div>
-);
-
-const LoginPage = () => (
-  <div className="p-8">
-    <h1 className="text-2xl font-bold mb-4 font-mono text-accent-green">Enter API Key</h1>
-    <div className="bg-surface-secondary p-6 rounded-lg border border-surface-tertiary max-w-md">
-      <input 
-        type="password" 
-        placeholder="API Key..." 
-        className="w-full bg-surface-primary border border-surface-hover rounded p-2 text-gray-200 font-mono focus:outline-none focus:border-accent-green"
-      />
-      <button className="mt-4 bg-accent-green text-surface-primary font-bold py-2 px-4 rounded hover:bg-opacity-90 font-mono transition-colors">
-        Login
-      </button>
-    </div>
-  </div>
-);
-
-const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => {
-  const location = useLocation();
-  const isActive = location.pathname === to;
-  
-  return (
-    <Link 
-      to={to} 
-      className={`font-mono px-4 py-2 rounded transition-colors ${
-        isActive ? 'bg-surface-hover text-accent-green' : 'text-gray-400 hover:text-gray-200 hover:bg-surface-tertiary'
-      }`}
-    >
-      {children}
-    </Link>
-  );
-};
-
-const NavBar = () => (
-  <nav className="bg-surface-secondary border-b border-surface-tertiary p-4 flex gap-4 items-center">
-    <div className="font-bold font-mono text-xl mr-8 flex items-center">
-      <span className="text-accent-green mr-2">█</span> AlphaExchange
-    </div>
-    <NavLink to="/">Leaderboard</NavLink>
-    <NavLink to="/submit">Submit</NavLink>
-    <NavLink to="/login">Login</NavLink>
-  </nav>
-);
-
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
-        <NavBar />
-        <main className="flex-1">
-          <Routes>
-            <Route path="/" element={<LeaderboardPage />} />
-            <Route path="/submit" element={<SubmitPage />} />
-            <Route path="/login" element={<LoginPage />} />
-          </Routes>
-        </main>
-      </div>
+      <AppLayout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/leaderboard" replace />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/submit" element={<Protected><SubmitPage /></Protected>} />
+          <Route path="/results/:testId" element={<Protected><ResultsPage /></Protected>} />
+        </Routes>
+      </AppLayout>
     </BrowserRouter>
   );
 }
-
-export default App;

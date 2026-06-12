@@ -24,7 +24,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
     healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      test: ["CMD", "/bin/kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -45,18 +45,18 @@ services:
     command: >
       /bin/bash -c "
         echo 'Waiting for Kafka to be ready...'
-        kafka-topics.sh --bootstrap-server kafka:9092 --list
+        /bin/kafka-topics --bootstrap-server kafka:9092 --list
 
         echo 'Creating topics...'
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic submissions --partitions 4 --replication-factor 1
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic build-jobs --partitions 4 --replication-factor 1
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic orchestrator-events --partitions 4 --replication-factor 1
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic bot-telemetry --partitions 16 --replication-factor 1
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic leaderboard-updates --partitions 2 --replication-factor 1
-        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic telemetry-anomalies --partitions 2 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic submissions --partitions 4 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic build-jobs --partitions 4 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orchestrator-events --partitions 4 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic bot-telemetry --partitions 16 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic leaderboard-updates --partitions 2 --replication-factor 1
+        /bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic telemetry-anomalies --partitions 2 --replication-factor 1
 
         echo 'All topics created.'
-        kafka-topics.sh --bootstrap-server kafka:9092 --list
+        /bin/kafka-topics --bootstrap-server kafka:9092 --list
       "
     networks:
       - trade-eval-net
@@ -107,10 +107,10 @@ services:
       minio:
         condition: service_healthy
     restart: "no"
-    command: >
+    entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin
-        mc mb --ignore-existing local/submissions
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/submissions &&
         echo 'MinIO bucket created.'
       "
     networks:
@@ -121,7 +121,7 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: trade-eval-timescaledb
     ports:
-      - "5432:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -154,6 +154,159 @@ services:
       retries: 10
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - trade-eval-net
+
+  # ── DB migrate (one-shot: applies SQL to both databases) ───────────────────
+  db-migrate:
+    image: postgres:16-alpine
+    container_name: trade-eval-db-migrate
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./services/telemetry-ingester/migrations:/migrations/timescale:ro
+      - ./services/orchestrator/migrations:/migrations/orchestrator:ro
+      - ./scripts/local-dev/seed.sql:/seed.sql:ro
+    entrypoint: >
+      /bin/sh -c "
+        set -e
+        for f in $$(ls /migrations/timescale/*.sql | sort); do
+          echo applying $$f; psql 'postgres://postgres:postgres@timescaledb:5432/tradeeval?sslmode=disable' -v ON_ERROR_STOP=1 -f $$f;
+        done
+        for f in $$(ls /migrations/orchestrator/*.sql | sort); do
+          echo applying $$f; psql 'postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable' -v ON_ERROR_STOP=1 -f $$f;
+        done
+        psql 'postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable' -f /seed.sql || true
+        echo 'migrations + seed complete'
+      "
+    networks:
+      - trade-eval-net
+
+  # ── Submission API ─────────────────────────────────────────────────────────
+  submission-api:
+    build: ./services/submission-api
+    container_name: trade-eval-submission-api
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - trade-eval-net
+
+  # ── Build Worker ───────────────────────────────────────────────────────────
+  build-worker:
+    build: ./services/build-worker
+    container_name: trade-eval-build-worker
+    user: root
+    env_file: .env
+    environment:
+      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      SECCOMP_PROFILE: ""
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infra/docker/contestant/seccomp:/seccomp:ro
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    networks:
+      - trade-eval-net
+
+  # ── Orchestrator ───────────────────────────────────────────────────────────
+  orchestrator:
+    build: ./services/orchestrator
+    container_name: trade-eval-orchestrator
+    ports:
+      - "8082:8082"
+    env_file: .env
+    environment:
+      ORCHESTRATOR_DB_DSN: postgres://postgres:postgres@postgres:5432/orchestrator?sslmode=disable
+      HEALTH_PORT: "8082"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trade-eval-net
+
+  # ── Bot Fleet ──────────────────────────────────────────────────────────────
+  bot-fleet:
+    build: ./services/bot-fleet
+    container_name: trade-eval-bot-fleet
+    ports:
+      - "8085:8082"
+    env_file: .env
+    environment:
+      METRICS_PORT: "8082"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - trade-eval-net
+
+  # ── Telemetry Ingester ─────────────────────────────────────────────────────
+  telemetry-ingester:
+    build: ./services/telemetry-ingester
+    container_name: trade-eval-telemetry-ingester
+    ports:
+      - "8083:8083"
+    env_file: .env
+    environment:
+      API_PORT: "8083"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trade-eval-net
+
+  # ── Leaderboard API ────────────────────────────────────────────────────────
+  leaderboard-api:
+    build: ./services/leaderboard-api
+    container_name: trade-eval-leaderboard-api
+    ports:
+      - "8084:8084"
+    env_file: .env
+    environment:
+      PORT: "8084"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trade-eval-net
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: trade-eval-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - submission-api
+      - leaderboard-api
     networks:
       - trade-eval-net
 

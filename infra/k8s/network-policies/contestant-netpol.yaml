@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: contestant-isolation
+  namespace: trade-eval
+spec:
+  podSelector:
+    matchLabels:
+      trade-eval: contestant
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only bot-fleet may reach contestant containers, only on 8080.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: bot-fleet
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress: []  # deny ALL egress — contestant code cannot call out
